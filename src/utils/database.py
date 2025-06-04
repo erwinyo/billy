@@ -97,26 +97,33 @@ def _get_table_columns(table_name: str) -> list:
 
 
 def _get_table_data(
-    table_name: str, condition: dict = None, use_or: bool = False
+    table_name: str,
+    condition: dict = None,
+    use_or: bool = False,
+    order_by: str = None,
+    order: str = "ASC",
 ) -> list:
     if condition:
-        # Choose connector based on use_or flag
         where_clause, values = __build_where_clause(condition, use_or)
-
-        # Build query with WHERE clause
-        query = f"SELECT * FROM {table_name} WHERE {where_clause};"
-        __postgres_cursor = __query_to_postgres(query, values)
+        query = f"SELECT * FROM {table_name} WHERE {where_clause}"
     else:
-        # No condition, select all rows
-        query = f"SELECT * FROM {table_name};"
-        __postgres_cursor = __query_to_postgres(query)
-    # Fetch all results
+        query = f"SELECT * FROM {table_name}"
+        values = None
+
+    # Add ORDER BY clause if requested
+    if order_by:
+        # Only allow ASC or DESC
+        order = order.upper()
+        if order not in ("ASC", "DESC"):
+            order = "ASC"
+        query += f" ORDER BY {order_by} {order}"
+
+    query += ";"
+    __postgres_cursor = __query_to_postgres(query, values)
     results = __postgres_cursor.fetchall()
     logger.trace(f"Query results: {results}")
 
-    # Get column names for the table
     columns = _get_table_columns(table_name)
-    # Convert each row to a dict mapping column names to values + datetime format to string format
     data = [
         {
             key: (value.isoformat() if isinstance(value, datetime) else value)

@@ -1,6 +1,7 @@
 # Builtin imports
 import os
 import sys
+
 from datetime import datetime
 
 # Third-party imports
@@ -8,6 +9,7 @@ from dotenv import load_dotenv
 
 # Local imports
 from loguru import logger
+from app.billy_web import BillyWeb
 
 load_dotenv()
 # ------------------------------- [LOGGER] -------------------------------
@@ -26,3 +28,8 @@ logger.add(
     format="<yellow>[{time:YYYY-MM-DD HH:mm:ss:SSSS}]</yellow> [<level><b>{level}</b></level>] [<b>{file.path}:{line}</b>] [<b>{function}</b>] <level>{message}</level>",
     level=LEVEL,
 )
+
+
+# ------------------------------- [APP] -------------------------------
+billy_web = BillyWeb()
+# ------------------------------- [RESPONSE ERROR] -------------------------------

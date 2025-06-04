@@ -6,30 +6,15 @@ sys.path.insert(1, os.path.abspath(os.path.join(os.path.dirname(__file__), "./sr
 
 # Third-party imports
 import uvicorn
-import psycopg2
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 # Local imports
 from base.config import logger
-from utils.database import _set_client_database, _check_postgres_connection
 from api.routes import user, account, wallet, pay
 
 load_dotenv(override=True)
-
-# Create database connection
-postgres_connection = psycopg2.connect(
-    dbname=os.getenv("POSTGRES_DBNAME"),
-    user=os.getenv("POSTGRES_USER"),
-    password=os.getenv("POSTGRES_PASSWORD"),
-    host=os.getenv("POSTGRES_HOST"),
-    port=os.getenv("POSTGRES_PORT"),
-)
-postgres_cursor = postgres_connection.cursor()
-_set_client_database(
-    postgres_connection=postgres_connection, postgres_cursor=postgres_cursor
-)
 
 # Create FastAPI app at module level
 app = FastAPI()

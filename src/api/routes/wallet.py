@@ -20,7 +20,7 @@ from fastapi.responses import Response, JSONResponse, FileResponse, StreamingRes
 
 # Local imports
 from base.config import logger, billy_web
-from base.exception import BillyResponseError
+from base.exception import BillyResponse
 from api.routes.user import get_current_user
 
 user_dependency = Annotated[dict, Depends(get_current_user)]
@@ -32,7 +32,7 @@ def get(user: user_dependency, wallet: str):
     billy_web._check_authorized_user(user)
 
     response = billy_web._get_wallet_data(wallet=wallet)
-    if response is BillyResponseError.NOT_FOUND:
+    if response is BillyResponse.NOT_FOUND:
         raise HTTPException(
             status_code=400,
             detail=f"Wallet '{wallet}' not found.",
@@ -52,7 +52,7 @@ def get(user: user_dependency, wallet: str):
     billy_web._check_authorized_user(user)
 
     response = billy_web._get_wallet_raw_data(wallet=wallet)
-    if response is BillyResponseError.NOT_FOUND:
+    if response is BillyResponse.NOT_FOUND:
         raise HTTPException(
             status_code=404,
             detail=f"Wallet '{wallet}' not found.",

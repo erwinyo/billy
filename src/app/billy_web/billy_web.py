@@ -14,14 +14,18 @@ from fastapi.responses import Response, JSONResponse, FileResponse, StreamingRes
 
 # Local package
 from base.config import logger
-from base.exception import BillyResponseError
+from base.exception import BillyResponse
 from utils.database import (
     _get_table_data,
     _insert_to_postgres,
     _set_client_database,
     _check_postgres_connection,
 )
-from utils.utils import _generate_unique_id, _generate_timestamp_now
+from utils.utils import (
+    _generate_unique_id,
+    _generate_timestamp_now,
+    _make_a_request_to_api,
+)
 
 load_dotenv()
 
@@ -52,7 +56,9 @@ class BillyWeb:
             postgres_cursor=self._postgres_cursor,
         )
 
+        # Account informations
         self._account_id = "7edd7933-b9bb-49b9-ad86-e12bbf380994"
+        self._beared_token = None
         self._default_wallets = [
             "freedom_fund",
             "savings",
@@ -61,11 +67,50 @@ class BillyWeb:
             "daily_needs",
         ]
 
+    def __get_beared_token(self, username: str, password: str) -> str:
+        print(f"Username: {username}, Password: {password} --------- asdasd")
+        status_code, response = _make_a_request_to_api(
+            route="/user/token",
+            method="POST",
+            data={"username": username, "password": password},
+        )
+        print(f"Status code: {status_code}, Response: {response}")
+        if status_code != 200:
+            logger.error(
+                f"Failed to login with status code {status_code} and response: {response}"
+            )
+            return None
+
+        beared_token = response.get("access_token")
+        return beared_token
+
+    def _login_authorized_user(self, username: str, password: str) -> BillyResponse:
+        if self._beared_token is not None:
+            return BillyResponse.BAD_REQUEST
+
+        # Login
+        print(f"Username: {username}, Password: {password} --------- ")
+        beared_token = self.__get_beared_token(username=username, password=password)
+        if beared_token == "string":
+            logger.error("Invalid username or password.")
+            return None
+        if beared_token is None:
+            return BillyResponse.INVALID_INPUT
+
+        self._user_name = username
+        self._user_passowrd = password
+        logger.info(f"Authorized user logged in: {self._user_name}")
+
+        return BillyResponse.SUCCESS
+
     def _check_authorized_user(self, user: Annotated) -> None:
         if user is None:
-            raise HTTPException(
+            JSONResponse(
                 status_code=401,
-                detail="Invalid user",
+                content={
+                    "status": "error",
+                    "message": "Unauthorized user.",
+                },
             )
 
     def _register_account(
@@ -150,7 +195,7 @@ class BillyWeb:
         # Check if the account has the specified wallet
         wallets = self.__get_account_wallets(account_id=self._account_id)
         if wallet not in wallets:
-            return BillyResponseError.NOT_FOUND
+            return BillyResponse.NOT_FOUND
 
         pay_ids = self.__get_pay_ids_from_account_id()
         # Check if there no pay IDs associated with the account
@@ -167,8 +212,8 @@ class BillyWeb:
 
     def _get_wallet_data(self, wallet: str) -> dict:
         raw_datas = self._get_wallet_raw_data(wallet=wallet)
-        if raw_datas is BillyResponseError.NOT_FOUND:
-            return BillyResponseError.NOT_FOUND
+        if raw_datas is BillyResponse.NOT_FOUND:
+            return BillyResponse.NOT_FOUND
 
         results = {}
         for data in raw_datas:

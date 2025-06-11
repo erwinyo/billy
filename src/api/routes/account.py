@@ -20,6 +20,7 @@ from fastapi.responses import Response, JSONResponse, FileResponse, StreamingRes
 
 # Local imports
 from base.config import logger, billy_web
+from base.exception import BillyResponse
 from utils.database import _get_table_data, _insert_to_postgres
 from utils.utils import _generate_unique_id, _generate_timestamp_now
 from api.routes.user import get_current_user
@@ -52,7 +53,24 @@ def signup(
 
 
 @router.post("/login")
-def login(user: user_dependency, email: str, password: str):
-    billy_web._check_authorized_user(user)
+def login(username: str, password: str):
+    print(username, password)
+    response = billy_web._login_authorized_user(username=username, password=password)
+    if response is BillyResponse.INVALID_INPUT:
+        raise HTTPException(
+            status_code=401,
+            detail="Username or password is incorrect.",
+        )
+    elif response is BillyResponse.BAD_REQUEST:
+        raise HTTPException(
+            status_code=404,
+            detail="Already logged in, please logout first.",
+        )
 
-    # ...
+    return JSONResponse(
+        status_code=200,
+        content={
+            "status": "success",
+            "message": response,
+        },
+    )

@@ -1,25 +1,30 @@
-# Built-in package
+# Built-in imports
 import os
+import sys
 from enum import Enum
 from datetime import datetime
 from typing import Annotated, Union
 from dataclasses import dataclass, field
 
-# Third party package
+# Third party imports
+import redis
 import psycopg2
-from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, Request, HTTPException, File, UploadFile
 from fastapi.responses import Response, JSONResponse, FileResponse, StreamingResponse
 
 
-# Local package
+# Local imports
 from base.config import logger
 from base.exception import BillyResponse
 from utils.database import (
     _get_table_data,
-    _insert_to_postgres,
-    _set_client_database,
+    _insert,
+    _set_client_postgres,
     _check_postgres_connection,
+    _set_client_redis,
+    _check_redis_connection,
+    _store_hashmap,
+    _retrieve_hashmap,
 )
 from utils.utils import (
     _generate_unique_id,
@@ -27,22 +32,22 @@ from utils.utils import (
     _make_a_request_to_api,
 )
 
-load_dotenv()
+BOT_EXPIRE_LOGGED_TIME = int(os.getenv("BOT_EXPIRE_LOGGED_TIME"))
 
 
 @dataclass(frozen=False, kw_only=False, match_args=False, slots=False)
 class BillyWeb:
     config: dict = field(default_factory=dict)
 
-    _account_id: str = field(init=False, repr=False)
+    _beared_token: str = field(init=False, repr=False)
     _postgres_connection: str = field(init=False, repr=False)
+    _postgres_cursor: str = field(init=False, repr=False)
+    _redis_connection: str = field(init=False, repr=False)
     _post: str = field(init=False, repr=False)
-    _account_id: str = field(init=False, repr=False)
-    _account_id: str = field(init=False, repr=False)
-    _account_id: str = field(init=False, repr=False)
+    _default_wallets: list = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        # Create database connection
+        # Create postgres connection
         self._postgres_connection = psycopg2.connect(
             dbname=os.getenv("POSTGRES_DBNAME"),
             user=os.getenv("POSTGRES_USER"),
@@ -51,14 +56,31 @@ class BillyWeb:
             port=os.getenv("POSTGRES_PORT"),
         )
         self._postgres_cursor = self._postgres_connection.cursor()
-        _set_client_database(
+        _set_client_postgres(
             postgres_connection=self._postgres_connection,
             postgres_cursor=self._postgres_cursor,
         )
+        if not _check_postgres_connection():
+            logger.error("PostgreSQL connection failed. Exiting...")
+            sys.exit(1)
 
-        # Account informations
-        self._account_id = "7edd7933-b9bb-49b9-ad86-e12bbf380994"
-        self._beared_token = None
+        # Create redis connection
+        self._redis_connection = redis.Redis(
+            host=os.getenv("REDIS_HOST"),
+            port=int(os.getenv("REDIS_PORT")),
+            db=int(os.getenv("REDIS_DB", 0)),
+            username=os.getenv("REDIS_USER"),
+            password=os.getenv("REDIS_PASSWORD"),
+            decode_responses=True,
+        )
+        _set_client_redis(redis_connection=self._redis_connection)
+        if not _check_redis_connection():
+            logger.error("Redis connection failed. Exiting...")
+            sys.exit(1)
+
+        # # Account informations
+        # self._account_id = None
+        # self._beared_token = None
         self._default_wallets = [
             "freedom_fund",
             "savings",
@@ -67,41 +89,32 @@ class BillyWeb:
             "daily_needs",
         ]
 
-    def __get_beared_token(self, username: str, password: str) -> str:
-        print(f"Username: {username}, Password: {password} --------- asdasd")
-        status_code, response = _make_a_request_to_api(
-            route="/user/token",
-            method="POST",
-            data={"username": username, "password": password},
-        )
-        print(f"Status code: {status_code}, Response: {response}")
-        if status_code != 200:
-            logger.error(
-                f"Failed to login with status code {status_code} and response: {response}"
-            )
-            return None
+    # def __get_beared_token(self, username: str, password: str) -> str:
+    #     status_code, response = _make_a_request_to_api(
+    #         route="/user/token",
+    #         method="POST",
+    #         data={"username": username, "password": password},
+    #         type_of_request="form",
+    #     )
+    #     beared_token = response.get("access_token")
+    #     return beared_token
 
-        beared_token = response.get("access_token")
-        return beared_token
+    # def _login_authorized_user(self, username: str, password: str) -> BillyResponse:
+    #     if self._beared_token is not None:
+    #         return BillyResponse.BAD_REQUEST
 
-    def _login_authorized_user(self, username: str, password: str) -> BillyResponse:
-        if self._beared_token is not None:
-            return BillyResponse.BAD_REQUEST
+    #     # Login
+    #     beared_token = self.__get_beared_token(username=username, password=password)
+    #     logger.debug(f"Beared token: {beared_token}")
+    #     if beared_token == "string":
+    #         logger.error("Invalid username or password.")
+    #         return BillyResponse.UNAUTHORIZED
+    #     if beared_token is None:
+    #         logger.error("Error at retrieving token.")
+    #         return BillyResponse.INVALID_INPUT
 
-        # Login
-        print(f"Username: {username}, Password: {password} --------- ")
-        beared_token = self.__get_beared_token(username=username, password=password)
-        if beared_token == "string":
-            logger.error("Invalid username or password.")
-            return None
-        if beared_token is None:
-            return BillyResponse.INVALID_INPUT
-
-        self._user_name = username
-        self._user_passowrd = password
-        logger.info(f"Authorized user logged in: {self._user_name}")
-
-        return BillyResponse.SUCCESS
+    #     self._beared_token = beared_token
+    #     return BillyResponse.SUCCESS
 
     def _check_authorized_user(self, user: Annotated) -> None:
         if user is None:
@@ -113,6 +126,16 @@ class BillyWeb:
                 },
             )
 
+    def _check_account_by_email(self, email: str) -> bool:
+        # Retrieve data from 'account' table
+        account_data = _get_table_data(
+            table_name="account",
+            condition={"email": email},
+        )
+        if not account_data:
+            return False
+        return True
+
     def _register_account(
         self,
         full_name: str,
@@ -121,7 +144,7 @@ class BillyWeb:
         password: str,
         pin: str,
     ) -> dict:
-        _insert_to_postgres(
+        _insert(
             table_name="account",
             data={
                 "account_id": _generate_unique_id(),
@@ -137,6 +160,7 @@ class BillyWeb:
 
     def _insert_pay_data(
         self,
+        account_id: str,
         wallet: str,
         flow: str,
         description: str,
@@ -145,7 +169,7 @@ class BillyWeb:
     ) -> None:
         # Insert 'pay' table
         pay_id = _generate_unique_id()
-        _insert_to_postgres(
+        _insert(
             table_name="pay",
             data={
                 "pay_id": pay_id,
@@ -159,10 +183,10 @@ class BillyWeb:
         )
 
         # Insert 'account_pay' table
-        _insert_to_postgres(
+        _insert(
             table_name="account_pay",
             data={
-                "account_id": self._account_id,
+                "account_id": account_id,
                 "pay_id": pay_id,
             },
         )
@@ -171,7 +195,7 @@ class BillyWeb:
         # Retrieve data from 'account' table
         account_data = _get_table_data(
             table_name="account",
-            condition={"account_id": self._account_id},
+            condition={"account_id": account_id},
         )
 
         # Extract wallets from the account data
@@ -179,25 +203,25 @@ class BillyWeb:
         logger.debug(f"Retrieved wallets for account {account_id}: {wallets}")
         return wallets
 
-    def __get_pay_ids_from_account_id(self) -> list:
+    def __get_pay_ids_from_account_id(self, account_id: str) -> list:
         # Retrieve data from 'account_pay' table
         account_pay_ids = _get_table_data(
             table_name="account_pay",
-            condition={"account_id": self._account_id},
+            condition={"account_id": account_id},
         )
         pay_ids = [account_pay_id["pay_id"] for account_pay_id in account_pay_ids]
-        logger.debug(f"Retrieved pay IDs for account {self._account_id}: {pay_ids}")
+        logger.debug(f"Retrieved pay IDs for account {account_id}: {pay_ids}")
         return pay_ids
 
-    def _get_wallet_raw_data(self, wallet: str) -> dict:
+    def _get_wallet_pay_raw_data(self, account_id: str, wallet: str) -> dict:
         # Normalize wallet name to lowercase (ensure non-sensitive case)
         wallet = wallet.lower()
         # Check if the account has the specified wallet
-        wallets = self.__get_account_wallets(account_id=self._account_id)
+        wallets = self.__get_account_wallets(account_id=account_id)
         if wallet not in wallets:
             return BillyResponse.NOT_FOUND
 
-        pay_ids = self.__get_pay_ids_from_account_id()
+        pay_ids = self.__get_pay_ids_from_account_id(account_id)
         # Check if there no pay IDs associated with the account
         if not pay_ids:
             return []
@@ -210,8 +234,8 @@ class BillyWeb:
         )
         return datas
 
-    def _get_wallet_data(self, wallet: str) -> dict:
-        raw_datas = self._get_wallet_raw_data(wallet=wallet)
+    def _get_wallet_pay_data(self, account_id: str, wallet: str) -> dict:
+        raw_datas = self._get_wallet_pay_raw_data(account_id=account_id, wallet=wallet)
         if raw_datas is BillyResponse.NOT_FOUND:
             return BillyResponse.NOT_FOUND
 
@@ -259,3 +283,40 @@ class BillyWeb:
                 prev_budget = data["READY_TO_SPEND"]
 
         return results
+
+    def _get_wallets(self, account_id: str) -> list:
+        # Retrieve data from 'account' table
+        account_data = _get_table_data(
+            table_name="account",
+            condition={"account_id": account_id},
+        )
+
+        # Extract wallets from the account data
+        wallets = account_data[0].get("wallets", [])
+        logger.debug(f"Retrieved wallets for account {account_id}: {wallets}")
+        return wallets
+
+    def _validate_email_link(self, email: str, telegram_id: str) -> bool:
+        # Retrieve data from 'account' table
+        account_data = _get_table_data(
+            table_name="account",
+            condition={"email": email},
+        )
+        if not account_data:
+            return BillyResponse.NOT_FOUND
+
+        # Store on redis
+        key = f"telegram:{telegram_id}"
+        data = {
+            "account_id": account_data[0]["account_id"],
+            "email": email,
+        }
+
+        _store_hashmap(
+            key=key,
+            data=data,
+            expire_seconds=BOT_EXPIRE_LOGGED_TIME,
+        )
+
+        logger.debug(f"Stored data in Redis for key {key}: {data}")
+        return BillyResponse.SUCCESS

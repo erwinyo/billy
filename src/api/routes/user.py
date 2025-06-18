@@ -7,20 +7,15 @@ from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from pydantic import BaseModel
 from passlib.context import CryptContext
 from jose import JWTError, jwt
-from dotenv import load_dotenv
 
 from api.basemodel.user import UserBaseModel, LoginRequest, SignupRequest
 from api.basemodel.token import Token
 
-load_dotenv()
-
-router = APIRouter(prefix="/user", tags=["user"])
-
 SECRET_KEY = "secret"
 ALGORITHM = "HS256"
-
 bcrypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_bearer = OAuth2PasswordBearer(tokenUrl="/user/token")
+router = APIRouter(prefix="/api/v1/account", tags=["user"])
 
 
 @router.post("/token", response_model=Token)
@@ -38,8 +33,11 @@ async def login_for_access_token(
     token = create_access_token(
         user.username, user.id, expires_delta=timedelta(days=365)
     )
-
     return {"access_token": token, "token_type": "bearer"}
+
+
+def verify_password(plain_password, hashed_password):
+    return bcrypt_context.verify(plain_password, hashed_password)
 
 
 def authenticate_user(username: str, password: str):

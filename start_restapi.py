@@ -10,11 +10,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
+load_dotenv(override=True)
+
 # Local imports
 from base.config import logger
-from api.routes import user, account, wallet, pay
+from api.routes import user, account, wallet, pay, utility
 
-load_dotenv(override=True)
 
 # Create FastAPI app at module level
 app = FastAPI()
@@ -40,6 +41,7 @@ app.include_router(user.router)
 app.include_router(account.router)
 app.include_router(wallet.router)
 app.include_router(pay.router)
+app.include_router(utility.router)
 
 
 if __name__ == "__main__":

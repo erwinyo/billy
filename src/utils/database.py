@@ -15,9 +15,15 @@ from base.config import logger
 
 __postgres_connection = None
 __postgres_cursor = None
+__redis_connection = None
 
 
-def _set_client_database(postgres_connection, postgres_cursor):
+"""
+POSTGRESS
+"""
+
+
+def _set_client_postgres(postgres_connection, postgres_cursor):
     global __postgres_connection, __postgres_cursor
     __postgres_connection = postgres_connection
     __postgres_cursor = postgres_cursor
@@ -134,7 +140,7 @@ def _get_table_data(
     return data
 
 
-def _insert_to_postgres(table_name: str, data: dict) -> None:
+def _insert(table_name: str, data: dict) -> None:
     # Extract columns and placeholders
     columns = ", ".join(data.keys())
     placeholders = ", ".join(["%s"] * len(data))
@@ -178,9 +184,7 @@ def _insert_to_postgres(table_name: str, data: dict) -> None:
     logger.success(f"Data inserted into {table_name} successfully.")
 
 
-def _update_to_postgres(
-    table_name: str, data: dict, condition: dict, use_or: bool = False
-) -> None:
+def _update(table_name: str, data: dict, condition: dict, use_or: bool = False) -> None:
     # Extract columns and values for SET clause
     set_clause = ", ".join([f"{key} = %s" for key in data.keys()])
     set_values = [
@@ -218,3 +222,46 @@ def _is_data_exist(table_name: str, condition: dict, use_or: bool = False) -> bo
 
     logger.info(f"Data exists in {table_name}: {is_exist}")
     return is_exist
+
+
+"""
+REDIS
+"""
+
+
+def _set_client_redis(redis_connection):
+    global __redis_connection
+    __redis_connection = redis_connection
+
+
+def _check_redis_connection() -> bool:
+    try:
+        __redis_connection.ping()
+        logger.success("Redis connection is successful.")
+        return True
+    except Exception as e:
+        logger.error(f"Redis connection error: {e}")
+        return False
+
+
+def _store_simple_string(key: str, value: str) -> None:
+    __redis_connection.set(key, value)
+    logger.success(f"Stored simple string under key '{key}' successfully.")
+
+
+def _retrieve_simple_string(key: str):
+    return __redis_connection.get(key)
+
+
+def _store_hashmap(
+    key: str, data: Dict[str, Any], expire_seconds: Optional[int] = None
+) -> None:
+    __redis_connection.hset(key, mapping=data)
+    if expire_seconds:
+        __redis_connection.expire(key, expire_seconds)
+
+
+def _retrieve_hashmap(key: str) -> Dict[str, Any]:
+    data = __redis_connection.hgetall(key)
+    # Convert bytes to str for all values
+    return {k.decode("utf-8"): v.decode("utf-8") for k, v in data.items()}

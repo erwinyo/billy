@@ -43,22 +43,45 @@ def _generate_timestamp_custom(
     return dt
 
 
+import os
+import requests
+
+
 def _make_a_request_to_api(
     route: str,
     method: str = "GET",
     data: dict = None,
     params: dict = None,
     headers: dict = {},
+    type_of_request: str = "json",
 ) -> tuple[int, dict]:
     url = f"http://{os.getenv('HOST')}:{os.getenv('PORT')}{route}"
-    headers = {"Content-Type": "application/json", **headers}
 
-    if method.upper() == "GET":
-        response = requests.get(url, headers=headers, params=params)
-    elif method.upper() == "POST":
-        response = requests.post(url, headers=headers, json=data)
-    else:
-        print(f"Unsupported method: {method}")
-        return 400, {"error": "Unsupported method"}
+    method = method.upper()
+    assert method in ["GET", "POST"], "Method must be GET or POST"
 
-    return response.status_code, response.json()
+    # Set appropriate Content-Type header
+    if type_of_request == "json":
+        headers = {"Content-Type": "application/json", **headers}
+    elif type_of_request == "form":
+        headers = {"Content-Type": "application/x-www-form-urlencoded", **headers}
+        if data is not None:
+            data = {str(k): str(v) for k, v in data.items()}
+
+    try:
+        if method == "GET":
+            response = requests.get(url, headers=headers, params=params)
+        elif method == "POST":
+            if type_of_request == "json":
+                response = requests.post(url, headers=headers, json=data)
+            elif type_of_request == "form":
+                response = requests.post(url, headers=headers, data=data)
+
+        return response.status_code, response.json()
+
+    except requests.RequestException as e:
+        raise RuntimeError(
+            f"Failed to make request to {url} with method {method}: {str(e)}"
+        ) from e
+    except ValueError as e:
+        raise RuntimeError(f"Failed to parse JSON response from {url}: {str(e)}") from e

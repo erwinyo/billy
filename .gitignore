@@ -138,6 +138,7 @@ models/*.onnx
 models/*.trt
 
 # Repos
+experiments/
 experiments/repo/*
 
 # experiments

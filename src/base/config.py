@@ -5,13 +5,11 @@ import sys
 from datetime import datetime
 
 # Third-party imports
-from dotenv import load_dotenv
 
 # Local imports
 from loguru import logger
 from app.billy_web import BillyWeb
 
-load_dotenv()
 # ------------------------------- [LOGGER] -------------------------------
 LEVEL = os.getenv("LOG_LEVEL")
 

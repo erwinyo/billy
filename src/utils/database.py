@@ -250,7 +250,11 @@ def _store_simple_string(key: str, value: str) -> None:
 
 
 def _retrieve_simple_string(key: str):
-    return __redis_connection.get(key)
+    data = __redis_connection.get(key)
+    if data is None:
+        logger.warning(f"No data found for key '{key}'.")
+        return None
+    return __redis_connection
 
 
 def _store_hashmap(
@@ -263,5 +267,8 @@ def _store_hashmap(
 
 def _retrieve_hashmap(key: str) -> Dict[str, Any]:
     data = __redis_connection.hgetall(key)
+    if data == {}:
+        logger.warning(f"No data found for key '{key}'.")
+        return None
     # Convert bytes to str for all values
-    return {k.decode("utf-8"): v.decode("utf-8") for k, v in data.items()}
+    return data

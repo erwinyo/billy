@@ -32,6 +32,7 @@ from utils.utils import (
     _make_a_request_to_api,
 )
 
+REDIS_TELEGRAM_DIR = os.getenv("REDIS_TELEGRAM_DIR")
 BOT_EXPIRE_LOGGED_TIME = int(os.getenv("BOT_EXPIRE_LOGGED_TIME"))
 
 
@@ -295,6 +296,19 @@ class BillyWeb:
         wallets = account_data[0].get("wallets", [])
         logger.debug(f"Retrieved wallets for account {account_id}: {wallets}")
         return wallets
+
+    def _validate_telegram_session(self, telegram_id: str) -> bool:
+        data = _retrieve_hashmap(
+            key=f"{REDIS_TELEGRAM_DIR}:{telegram_id}",
+        )
+        logger.debug(
+            f"Retrieved data from Redis for key {REDIS_TELEGRAM_DIR}:{telegram_id}: {data}"
+        )
+        if data is None:
+            return BillyResponse.UNAUTHORIZED, None
+
+        account_id = data.get("account_id")
+        return BillyResponse.SUCCESS, account_id
 
     def _validate_email_link(self, email: str, telegram_id: str) -> bool:
         # Retrieve data from 'account' table

@@ -19,14 +19,31 @@ from fastapi.responses import Response, JSONResponse, FileResponse, StreamingRes
 # Local imports
 from base.config import logger
 from base.exception import BillyResponse
+from api.basemodel.utility import EmailRequest
 from utils.messaging import send_email
+
 
 router = APIRouter(prefix="/api/v1/utility", tags=["utility"])
 
 
 @router.post("/email/send")
-def utility_send_email(subject: str, body: str, recipient: str):
-    success = send_email(subject=subject, body=body, recipient=recipient)
-    if not success:
-        return BillyResponse.SERVER_ERROR
-    return BillyResponse.SUCCESS
+def utility_send_email(email: EmailRequest):
+    response = send_email(
+        subject=email.subject, body=email.body, recipient=email.recipient
+    )
+    if response is BillyResponse.SERVER_ERROR:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": "Failed to send email.",
+            },
+        )
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "status": "success",
+            "message": "Success to send email.",
+        },
+    )

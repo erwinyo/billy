@@ -69,7 +69,11 @@ def login(username: str, password: str):
 
 @router.get("/telegram/login")
 def telegram_login(email: str, telegram_id: str):
+    """
+    USED IN EMAIL LINK LOGIN
+    """
     response = billy_web._validate_email_link(email=email, telegram_id=telegram_id)
+
     if response is BillyResponse.NOT_FOUND:
         raise HTTPException(
             status_code=404,
@@ -80,6 +84,25 @@ def telegram_login(email: str, telegram_id: str):
         status_code=200,
         content={
             "status": "success",
-            "message": "Logged on telegram successfully.",
+            "message": "Login email successfully sent.",
+        },
+    )
+
+
+@router.post("/telegram/session")
+def telegram_session(telegram_id: str):
+    response, account_id = billy_web._validate_telegram_session(telegram_id=telegram_id)
+    if response is BillyResponse.UNAUTHORIZED:
+        raise HTTPException(
+            status_code=401,
+            detail="Telegram session is not valid or expired.",
+        )
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "status": "success",
+            "message": "Session authorized.",
+            "data": account_id,
         },
     )

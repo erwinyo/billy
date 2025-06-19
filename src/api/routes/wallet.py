@@ -43,7 +43,7 @@ def get_pay(account_id: str, wallet: str):
 
 
 @router.get("/get_pay_raw")
-def get(account_id: str, wallet: str):
+def get_pay_raw(account_id: str, wallet: str):
     response = billy_web._get_wallet_pay_raw_data(account_id=account_id, wallet=wallet)
     if response is BillyResponse.NOT_FOUND:
         raise HTTPException(
@@ -61,7 +61,7 @@ def get(account_id: str, wallet: str):
 
 
 @router.get("/get_wallets")
-def get(account_id: str):
+def get_wallets(account_id: str):
     response = billy_web._get_wallets(account_id=account_id)
     return JSONResponse(
         status_code=200,
